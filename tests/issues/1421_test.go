@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -59,10 +60,13 @@ func Test1421BatchFlushBrokenConn(t *testing.T) {
 	}()
 	_, err2 := dockerClient.ContainerKill(ctx, env.ContainerID, client.ContainerKillOptions{Signal: "KILL"})
 	require.NoError(t, err2)
-	// Some Docker setups never reset the connection when the container dies, so Flush would block forever.
+	// Docker Desktop may never reset the connection when the container dies, so Flush would block forever.
 	select {
 	case <-ch:
 	case <-time.After(time.Minute):
+		if runtime.GOOS == "linux" {
+			t.Fatal("batch.Flush did not return within 1m after the container was killed")
+		}
 		t.Skip("batch.Flush did not observe the killed container within 1m; this Docker setup does not reset the connection")
 	}
 	require.True(t, errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET))
